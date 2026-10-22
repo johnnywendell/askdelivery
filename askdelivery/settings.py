@@ -11,6 +11,9 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 import os
 from pathlib import Path
+from decouple import Csv, config
+from datetime import timedelta
+#from celery.schedules import crontab
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -20,13 +23,12 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-=uggimqr%uj3@d*un31lhkdtfd$f)nqldr0wiwa18630xx@&$n'
+SECRET_KEY = config('DEBUG', default=False, cast=bool)
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['127.0.0.1','localhost','177.153.33.230','ask.singularcode.net']
-
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', cast=Csv())
 
 # Application definition
 
@@ -88,7 +90,7 @@ LOGIN_NOT_REQUIRED = (
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': '/host_project/db.sqlite3',
     }
 }
 
@@ -127,16 +129,20 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
-STATIC_URL = 'static/'
-STATIC_ROOT = os.path.join(BASE_DIR, 'static')
-MEDIA_URL = 'media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+STATIC_URL = '/static/'
+STATICFILES_DIRS = [BASE_DIR / 'static',]
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 ASSINATURA_URL ='secure-keys/'
 MEDIA_ASS = os.path.join(BASE_DIR, 'secure-keys')
 
-CSRF_TRUSTED_ORIGINS = ['http://177.153.33.230:8080','http://ask.singularcode.net','https://ask.singularcode.net']
+CSRF_TRUSTED_ORIGINS = ['http://192.168.1.71','http://168.181.215.66','http://ask.singularcode.net','https://ask.singularcode.net']
 CSRF_COOKIE_SECURE = True
 SESSION_COOKIE_SECURE = True
+
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SECURE_SSL_REDIRECT = True
 
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 10000
 SESSION_COOKIE_AGE = 14400
@@ -148,10 +154,15 @@ DEFAULT_FROM_EMAIL = 'SCAIP <johnnywendell8@gmail.com>'
 ASGI_APPLICATION = 'askdelivery.asgi.application'
 
 CHANNEL_LAYERS = {
-    "default": {
-        "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {
-            "hosts": [("127.0.0.1", 6379)],
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            'hosts': [
+                (
+                    os.getenv('REDIS_HOST', '127.0.0.1'),
+                    int(os.getenv('REDIS_PORT', '6379'))
+                )
+            ],
         },
     },
 }
