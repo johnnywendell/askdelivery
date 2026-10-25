@@ -1,6 +1,9 @@
 #git rm -r --cached media
 #git commit -m "Remove pasta media do versionamento"
 # Byte-compiled / optimized / DLL files
+docker/certbot/conf/
+docker/certbot/www/
+
 __pycache__/
 /__pycache__/
 migrations/
