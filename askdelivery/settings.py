@@ -90,7 +90,7 @@ LOGIN_NOT_REQUIRED = (
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': '/host_project/db.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
 
@@ -138,16 +138,17 @@ ASSINATURA_URL ='secure-keys/'
 MEDIA_ASS = os.path.join(BASE_DIR, 'secure-keys')
 
 CSRF_TRUSTED_ORIGINS = ['http://192.168.1.71','http://168.181.215.66','http://ask.singularcode.net','https://ask.singularcode.net']
-CSRF_COOKIE_SECURE = True
-SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = False
+SESSION_COOKIE_SECURE = False
 
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-SECURE_SSL_REDIRECT = True
+SECURE_SSL_REDIRECT = False
 
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 10000
 SESSION_COOKIE_AGE = 14400
 SESSION_SAVE_EVERY_REQUEST = False
 
+SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
 
 DEFAULT_FROM_EMAIL = 'SCAIP <johnnywendell8@gmail.com>'
 

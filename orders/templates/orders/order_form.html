@@ -85,7 +85,15 @@
 {% endblock %}
 {% block extra_js %}
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
 <script>
+    /*
+    =========================================
+    CONFIGURAÇÃO GEOAPIFY
+    =========================================
+    */
+
+    const GEOAPIFY_API_KEY = '20913c5f861c40309647457e96bdd65c';
 
     /*
     =========================================
@@ -93,18 +101,12 @@
     =========================================
     */
 
-    const searchInput =
-        document.getElementById('address-search');
+    const searchInput = document.getElementById('address-search');
+    const resultsBox = document.getElementById('address-results');
+    const latitude = document.getElementById('id_latitude');
+    const longitude = document.getElementById('id_longitude');
 
-    const resultsBox =
-        document.getElementById('address-results');
-
-    const latitude =
-        document.getElementById('id_latitude');
-
-    const longitude =
-        document.getElementById('id_longitude');
-
+    searchInput.setAttribute('autocomplete', 'off');
 
     /*
     =========================================
@@ -112,58 +114,117 @@
     =========================================
     */
 
-    let map = L.map('map')
-        .setView([-12.97, -38.50], 13);
+    const map = L.map('map').setView([-12.97, -38.50], 13);
 
-    L.tileLayer(
-        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-        {
-            maxZoom: 19,
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        }
-    ).addTo(map);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
 
     let marker = null;
 
+    /*
+    =========================================
+    CONTROLE DE REQUISIÇÕES
+    =========================================
+    */
+
+    let timeout = null;
+    let searchController = null;
+    let searchSequence = 0;
 
     /*
     =========================================
-    AUTOCOMPLETE
+    BUSCAR ENDEREÇO
     =========================================
     */
 
     async function searchAddress(query) {
 
-        if (query.length < 5) {
+        query = query.trim();
 
+        if (query.length < 3) {
             resultsBox.innerHTML = '';
-
             return;
         }
 
-        const url =
-            `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&q=${encodeURIComponent(query)}`;
+        const sequence = ++searchSequence;
+
+        if (searchController) {
+            searchController.abort();
+        }
+
+        searchController = new AbortController();
+
+        const url = new URL(
+            'https://api.geoapify.com/v1/geocode/autocomplete'
+        );
+
+        url.searchParams.set('text', query);
+        url.searchParams.set('format', 'json');
+        url.searchParams.set('limit', '6');
+        url.searchParams.set('lang', 'pt');
+        url.searchParams.set('filter', 'countrycode:br');
+
+        // Prioriza endereços próximos ao centro atual do mapa.
+        const center = map.getCenter();
+
+        url.searchParams.set(
+            'bias',
+            `proximity:${center.lng},${center.lat}`
+        );
+
+        url.searchParams.set('apiKey', GEOAPIFY_API_KEY);
+
+        resultsBox.innerHTML = `
+            <div class="list-group-item text-muted">
+                Buscando endereços...
+            </div>
+        `;
 
         try {
 
-            const response =
-                await fetch(url);
+            const response = await fetch(url.toString(), {
+                signal: searchController.signal
+            });
 
-            const data =
-                await response.json();
+            if (!response.ok) {
+                throw new Error(
+                    `Geoapify retornou HTTP ${response.status}`
+                );
+            }
 
-            renderResults(data);
+            const data = await response.json();
 
-        } catch (e) {
+            if (sequence !== searchSequence) {
+                return;
+            }
 
-            console.error(e);
+            console.log('Geoapify:', data);
+
+            renderResults(data.results || []);
+
+        } catch (error) {
+
+            if (error.name === 'AbortError') {
+                return;
+            }
+
+            console.error('Erro Geoapify:', error);
+
+            if (sequence === searchSequence) {
+                resultsBox.innerHTML = `
+                    <div class="list-group-item text-danger">
+                        Não foi possível consultar os endereços.
+                    </div>
+                `;
+            }
         }
     }
 
-
     /*
     =========================================
-    RESULTADOS
+    RENDERIZAR RESULTADOS
     =========================================
     */
 
@@ -171,30 +232,68 @@
 
         resultsBox.innerHTML = '';
 
+        if (results.length === 0) {
+
+            resultsBox.innerHTML = `
+                <div class="list-group-item text-muted">
+                    Nenhum endereço encontrado.
+                </div>
+            `;
+
+            return;
+        }
+
         results.forEach(item => {
 
-            const button =
-                document.createElement('button');
+            const button = document.createElement('button');
 
             button.type = 'button';
-
             button.className =
                 'list-group-item list-group-item-action';
 
-            button.innerText =
-                item.display_name;
+            const title = document.createElement('div');
+            title.className = 'fw-semibold';
 
-            button.addEventListener('click', () => {
+            title.textContent =
+                item.address_line1 ||
+                item.formatted ||
+                item.street ||
+                item.name ||
+                'Endereço';
 
+            const subtitle = document.createElement('small');
+            subtitle.className = 'text-muted d-block';
+
+            subtitle.textContent =
+                item.address_line2 ||
+                [
+                    item.suburb || item.district,
+                    item.city,
+                    item.state,
+                    item.postcode
+                ].filter(Boolean).join(', ');
+
+            button.appendChild(title);
+            button.appendChild(subtitle);
+
+            // Mostra se o resultado possui número cadastrado.
+            if (item.housenumber) {
+
+                const numberInfo = document.createElement('small');
+                numberInfo.className = 'd-block text-success';
+                numberInfo.textContent =
+                    `Número identificado: ${item.housenumber}`;
+
+                button.appendChild(numberInfo);
+            }
+
+            button.addEventListener('click', function() {
                 selectAddress(item);
-
             });
 
             resultsBox.appendChild(button);
-
         });
     }
-
 
     /*
     =========================================
@@ -204,85 +303,134 @@
 
     function selectAddress(item) {
 
+        const lat = Number(item.lat);
+        const lng = Number(item.lon);
+
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+            console.error('Coordenadas inválidas:', item);
+            return;
+        }
+
+        // Cancela qualquer busca anterior.
+        searchSequence++;
+
+        clearTimeout(timeout);
+
+        if (searchController) {
+            searchController.abort();
+        }
+
+        // Endereço formatado pelo Geoapify.
         searchInput.value =
-            item.display_name;
+            item.formatted ||
+            [
+                item.street || item.name,
+                item.housenumber,
+                item.city,
+                item.state,
+                item.postcode
+            ].filter(Boolean).join(', ');
 
-        latitude.value =
-            parseFloat(item.lat).toFixed(8);
-
-        longitude.value =
-            parseFloat(item.lon).toFixed(8);
+        latitude.value = lat.toFixed(8);
+        longitude.value = lng.toFixed(8);
 
         resultsBox.innerHTML = '';
 
-        const lat =
-            parseFloat(item.lat);
-
-        const lng =
-            parseFloat(item.lon);
-
-
         /*
         =========================================
-        MAPA
+        POSICIONAR NO MAPA
         =========================================
         */
 
-        map.setView([lat, lng], 16);
+        map.setView([lat, lng], 17);
 
         if (marker) {
             map.removeLayer(marker);
         }
 
-        marker = L.marker(
-            [lat, lng],
-            {
-                draggable: true
-            }
-        )
-
-        .addTo(map);
-
+        marker = L.marker([lat, lng], {
+            draggable: true
+        }).addTo(map);
 
         /*
         =========================================
-        ARRASTAR MARKER
+        INFORMAÇÕES DO ENDEREÇO
+        =========================================
+        */
+
+        const possuiNumero = Boolean(item.housenumber);
+
+        const popup = possuiNumero
+            ? '📍 Endereço encontrado. Confirme o ponto de entrega.'
+            : '⚠️ Número não confirmado. Ajuste o marcador para o local correto.';
+
+        marker.bindPopup(popup).openPopup();
+
+        /*
+        =========================================
+        ARRASTAR MARCADOR
         =========================================
         */
 
         marker.on('dragend', function() {
 
-            const pos =
-                marker.getLatLng();
+            const pos = marker.getLatLng();
 
-            latitude.value =
-                parseFloat(pos.lat).toFixed(8);
+            latitude.value = pos.lat.toFixed(8);
+            longitude.value = pos.lng.toFixed(8);
 
-            longitude.value =
-                parseFloat(pos.lng).toFixed(8);
+            marker.bindPopup(
+                '📍 Localização ajustada manualmente.'
+            ).openPopup();
+        });
 
+        console.log('Endereço selecionado:', {
+            endereco: searchInput.value,
+            latitude: latitude.value,
+            longitude: longitude.value,
+            numero: item.housenumber || null,
+            tipo: item.result_type,
+            confianca: item.rank?.confidence,
+            confianca_imovel: item.rank?.confidence_building_level
         });
     }
 
-
     /*
     =========================================
-    DIGITAÇÃO
+    DIGITAÇÃO / AUTOCOMPLETE
     =========================================
     */
-
-    let timeout = null;
 
     searchInput.addEventListener('input', function() {
 
         clearTimeout(timeout);
 
+        searchSequence++;
+
+        if (searchController) {
+            searchController.abort();
+        }
+
+        const query = this.value.trim();
+
+        // Evita salvar coordenadas de uma busca anterior
+        // caso o usuário altere o endereço.
+        latitude.value = '';
+        longitude.value = '';
+
+        if (marker) {
+            map.removeLayer(marker);
+            marker = null;
+        }
+
+        if (query.length < 3) {
+            resultsBox.innerHTML = '';
+            return;
+        }
+
         timeout = setTimeout(() => {
-
-            searchAddress(this.value);
-
-        }, 500);
-
+            searchAddress(query);
+        }, 700);
     });
 
 </script>
