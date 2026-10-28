@@ -51,6 +51,15 @@ class Order(models.Model):
         blank=True,
     )
 
+    delivery_distance_km = models.DecimalField(max_digits=10, decimal_places=3, null=True, blank=True)
+    delivery_base = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    delivery_per_km = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    delivery_fee = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    payment_state = models.CharField(max_length=12, default='unfunded', choices=[
+        ('unfunded', 'Sem reserva'), ('reserved', 'Reservado'),
+        ('paid', 'Pago'), ('released', 'Devolvido'),
+    ])
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

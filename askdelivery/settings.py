@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     'core',
     'tracking',
     'orders',
+    'wallet.apps.WalletConfig',
 
 ]
 

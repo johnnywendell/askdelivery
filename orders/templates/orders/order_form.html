@@ -1,19 +1,25 @@
 {% extends 'base.html' %}
 {% load static %}
 
-{% block title %}Novo Pedido{% endblock %}
-{% block page_title %}Criar Pedido{% endblock %}
+{% block title %}{% if is_update %}Editar pedido{% else %}Novo pedido{% endif %}{% endblock %}
+{% block page_title %}{% if is_update %}Editar pedido{% else %}Criar pedido{% endif %}{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet"
       href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 {% endblock %}
 {% block content %}
+<div class="alert alert-info">O frete será calculado automaticamente (base + valor por km em linha reta) e reservado na sua carteira ao salvar. É necessário saldo disponível. Após a reserva, alterações de destino exigem cancelar e criar outro pedido. <a href="{% url 'wallet:dashboard' %}">Acessar carteira</a></div>
+{{ order_form.non_field_errors }}
+<div id="delivery-quote" class="alert alert-light border" role="status" aria-live="polite" data-url="{% url 'wallet:quote' %}">
+{% if is_update %}Frete reservado: R$ {{ object.delivery_fee|floatformat:2 }}. O destino deste pedido não pode ser alterado.{% else %}Selecione um destino para visualizar o frete antes de salvar.{% endif %}
+</div>
+{% for field in order_form %}{% for error in field.errors %}<p class="text-danger">{{ field.label }}: {{ error }}</p>{% endfor %}{% endfor %}
 
 <div class="page-card">
 
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h5 class="mb-0">Novo Pedido</h5>
+        <h5 class="mb-0">{% if is_update %}Editar pedido{% else %}Novo pedido{% endif %}</h5>
     </div>
 
     <form method="POST">
@@ -107,6 +113,33 @@
     const longitude = document.getElementById('id_longitude');
 
     searchInput.setAttribute('autocomplete', 'off');
+    if ({{ is_update|yesno:'true,false' }}) searchInput.readOnly = true;
+    let quoteSequence = 0;
+    async function updateDeliveryQuote() {
+        const box = document.getElementById('delivery-quote');
+        if ({{ is_update|yesno:'true,false' }}) return;
+        const sequence = ++quoteSequence;
+        if (!latitude.value || !longitude.value) {
+            box.textContent = 'Selecione um destino para visualizar o frete antes de salvar.';
+            return;
+        }
+        box.textContent = 'Calculando frete...';
+        const url = new URL(box.dataset.url, window.location.origin);
+        url.searchParams.set('latitude', latitude.value);
+        url.searchParams.set('longitude', longitude.value);
+        try {
+            const response = await fetch(url);
+            if (!response.ok && response.status !== 400) throw new Error();
+            const data = await response.json();
+            if (sequence !== quoteSequence) return;
+            if (data.error) { box.textContent = data.error; return; }
+            const brl = value => Number(value).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
+            box.textContent = `Frete: ${brl(data.fee)} · ${data.distance_km} km em linha reta · Base ${brl(data.base)} + ${brl(data.per_km)}/km. Saldo disponível: ${brl(data.available)}. ${data.sufficient ? 'Valor reservado ao salvar.' : 'Saldo insuficiente: solicite um depósito na carteira.'}`;
+        } catch (error) {
+            if (sequence === quoteSequence) box.textContent = 'Não foi possível consultar o frete. Tente selecionar o destino novamente.';
+        }
+    }
+    if (latitude.value && longitude.value) updateDeliveryQuote();
 
     /*
     =========================================
@@ -333,6 +366,7 @@
 
         latitude.value = lat.toFixed(8);
         longitude.value = lng.toFixed(8);
+        updateDeliveryQuote();
 
         resultsBox.innerHTML = '';
 
@@ -378,6 +412,7 @@
 
             latitude.value = pos.lat.toFixed(8);
             longitude.value = pos.lng.toFixed(8);
+            updateDeliveryQuote();
 
             marker.bindPopup(
                 '📍 Localização ajustada manualmente.'
@@ -417,6 +452,7 @@
         // caso o usuário altere o endereço.
         latitude.value = '';
         longitude.value = '';
+        updateDeliveryQuote();
 
         if (marker) {
             map.removeLayer(marker);

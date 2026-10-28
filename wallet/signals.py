@@ -6,7 +6,7 @@ from wallet.models import Wallet
 
 @receiver(post_save, sender=Usuario)
 def criar_wallet(sender, instance, created, **kwargs):
-    if created:
-        Wallet.objects.create(
+    if created and not kwargs.get('raw'):
+        Wallet.objects.get_or_create(
             usuario=instance
         )

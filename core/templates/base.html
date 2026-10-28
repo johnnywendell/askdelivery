@@ -62,11 +62,13 @@
         </div>
 
         <nav class="sidebar-nav nav flex-column">
+            <a href="{% url 'wallet:dashboard' %}" class="nav-link {% if request.resolver_match.app_name == 'wallet' %}active{% endif %}"><i class="bi bi-wallet2"></i> Minha carteira</a>
+            {% if request.user.is_superuser %}<a href="{% url 'wallet:management' %}" class="nav-link"><i class="bi bi-cash-stack"></i> Gestão de carteiras</a>{% endif %}
 
             <a href="{% url 'core:index' %}"
                class="nav-link {% if request.resolver_match.url_name == 'index' %}active{% endif %}">
                 <i class="bi bi-speedometer2"></i>
-                Index
+                Início
             </a>
 
             {% if perms.core.restaurante %}

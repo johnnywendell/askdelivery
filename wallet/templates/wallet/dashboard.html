@@ -1,0 +1,34 @@
+{% extends 'base.html' %}
+{% block title %}Minha carteira · Ask Delivery{% endblock %}
+{% block page_title %}Minha carteira{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap gap-3 mb-4">
+    <div><h3 class="fw-bold">Sua carteira</h3><p class="text-muted mb-0">Acompanhe seu saldo e as movimentações das entregas.</p></div>
+    {% if request.user.is_superuser %}<a class="btn btn-outline-primary align-self-start" href="{% url 'wallet:management' %}">Gerenciar solicitações e tarifas</a>{% endif %}
+</div>
+<div class="row g-3 mb-4">
+    <div class="col-md-6"><div class="card bg-primary text-white border-0 rounded-4"><div class="card-body p-4"><div>Saldo disponível</div><div class="display-6 fw-bold">R$ {{ wallet.saldo|floatformat:2 }}</div><small>Disponível para novas entregas ou solicitação de saque</small></div></div></div>
+    <div class="col-md-6"><div class="card bg-light border-0 rounded-4"><div class="card-body p-4"><div>Saldo reservado</div><div class="display-6 fw-bold">R$ {{ wallet.saldo_reservado|floatformat:2 }}</div><small class="text-muted">Comprometido com entregas e saques pendentes</small></div></div></div>
+</div>
+<div class="row g-4">
+    <div class="col-lg-4">
+        <h5>Solicitar movimentação</h5>
+        <p class="small text-muted">O depósito só entra no saldo após o administrador confirmar o recebimento externo. O saque reserva seu saldo até a confirmação do pagamento externo. Esta tela não realiza transferências bancárias.</p>
+        <form method="post" class="card card-body bg-light border-0">
+            {% csrf_token %}{{ form.public_id }}{{ form.non_field_errors }}
+            {% for field in form.visible_fields %}<div class="mb-3"><label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{{ field.errors }}{% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}</div>{% endfor %}
+            <button class="btn btn-primary">Enviar solicitação</button>
+        </form>
+        <div class="small text-muted mt-3">O frete é reservado pelo restaurante na criação do pedido e creditado ao entregador ao concluir a entrega. Cancelamentos antes da saída para entrega devolvem a reserva.</div>
+    </div>
+    <div class="col-lg-8">
+        <div class="d-flex justify-content-between flex-wrap gap-2 mb-3"><h5>Extrato</h5><form method="get"><select class="form-select form-select-sm" name="tipo" aria-label="Tipo de transação"><option value="">Todas as movimentações</option>{% for value,label in types %}<option value="{{ value }}" {% if tipo == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select><button class="btn btn-sm btn-outline-secondary mt-1">Filtrar</button></form></div>
+        <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Movimentação</th><th>Valor</th><th>Disponível após</th></tr></thead><tbody>
+        {% for item in page_obj %}<tr><td><strong>{{ item.get_tipo_display }}</strong><div class="small text-muted">{{ item.created_at|date:'d/m/Y H:i' }} · {{ item.descricao }}</div>{% if item.pedido %}<a class="small" href="{% url 'orders:order_detail' item.pedido.public_id %}">Pedido #{{ item.pedido_id }}</a>{% endif %}</td><td class="text-nowrap">R$ {{ item.valor|floatformat:2 }}</td><td class="text-nowrap">R$ {{ item.saldo_posterior|floatformat:2 }}</td></tr>{% empty %}<tr><td colspan="3" class="text-center text-muted py-5">Sua carteira ainda não tem movimentações.</td></tr>{% endfor %}
+        </tbody></table></div>
+        <nav aria-label="Páginas do extrato" class="d-flex gap-3 align-items-center">{% if page_obj.has_previous %}<a href="?tipo={{ tipo|urlencode }}&page={{ page_obj.previous_page_number }}">Anterior</a>{% endif %}<small>{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</small>{% if page_obj.has_next %}<a href="?tipo={{ tipo|urlencode }}&page={{ page_obj.next_page_number }}">Próxima</a>{% endif %}</nav>
+    </div>
+</div>
+<hr class="my-4"><h5>Últimas solicitações</h5>
+<div class="table-responsive"><table class="table"><thead><tr><th>Data / referência</th><th>Operação</th><th>Valor</th><th>Situação</th></tr></thead><tbody>{% for item in requests %}<tr><td>{{ item.created_at|date:'d/m/Y H:i' }}<div class="small text-muted">{{ item.public_id }}</div></td><td>{{ item.get_kind_display }}<div class="small">{{ item.note }}</div></td><td class="text-nowrap">R$ {{ item.amount|floatformat:2 }}</td><td><span class="badge {% if item.status == 'approved' %}bg-success{% elif item.status == 'rejected' %}bg-danger{% else %}bg-secondary{% endif %}">{{ item.get_status_display }}</span><div class="small">{{ item.review_note }}</div></td></tr>{% empty %}<tr><td colspan="4" class="text-muted">Nenhuma solicitação registrada.</td></tr>{% endfor %}</tbody></table></div>
+{% endblock %}

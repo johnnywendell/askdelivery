@@ -13,6 +13,8 @@ from .forms import OrderForm
 from django.db import transaction
 from django.urls import reverse_lazy,reverse
 from django.db.models import Q
+from wallet.services import DeliveryService
+from rest_framework.exceptions import PermissionDenied, ValidationError
 
 ############# api views #############
 class OrdersDashboardView(CustomTemplateView):
@@ -23,9 +25,17 @@ class OrdersDashboardView(CustomTemplateView):
 class CreateOrderAPIView(APIView):
 
     def post(self, request):
+        restaurant = getattr(getattr(request.user, 'perfil', None), 'restaurante', None)
+        if restaurant is None:
+            raise PermissionDenied('Apenas restaurantes podem criar pedidos.')
         serializer = OrderSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        order = serializer.save()
+        try:
+            with transaction.atomic():
+                order = serializer.save(restaurante=restaurant, status=Order.Status.APPROVED)
+                order = DeliveryService.reserve(order)
+        except ValueError as exc:
+            raise ValidationError({'detail': str(exc)})
 
         return Response({
             "success": True,
@@ -36,21 +46,23 @@ class OrderListAPIView(ListAPIView):
 
     serializer_class = OrderSerializer
     def get_queryset(self):
-        entregador = getattr(self.request.user.perfil,'entregador', None)
+        entregador = getattr(getattr(self.request.user, 'perfil', None), 'entregador', None)
+        if entregador is None:
+            return Order.objects.none()
 
         return Order.objects.select_related(
             'entregador',
             'cliente',
             'restaurante'
         ).filter(
-            Q(entregador__isnull=True)|
-            Q(entregador=entregador) & ~Q(status=Order.Status.DELIVERED)
+            Q(entregador__isnull=True, status__in=['approved', 'created']) |
+            Q(entregador=entregador, status__in=['accepted', 'picking', 'in_transit'])
         ).order_by('-created_at')
 
 class AcceptOrderAPIView(APIView):
     @transaction.atomic
     def post(self, request, pk):
-        order = Order.objects.select_for_update().get(pk=pk)
+        order = get_object_or_404(Order.objects.select_for_update(), pk=pk)
 
         # verifica se já foi aceito
         if order.entregador is not None:
@@ -75,6 +87,10 @@ class AcceptOrderAPIView(APIView):
                 'message': 'Pedido não disponível'
             }, status=status.HTTP_400_BAD_REQUEST)
 
+        try:
+            order = DeliveryService.reserve(order)
+        except ValueError as exc:
+            return Response({'success': False, 'message': str(exc)}, status=400)
         order.entregador = entregador
         order.status = Order.Status.ACCEPTED
         order.save()
@@ -189,20 +205,25 @@ class OrderCreateView(CustomView):
     @transaction.atomic
     def post(self, request, *args, **kwargs):
 
+        restaurant = getattr(getattr(request.user, 'perfil', None), 'restaurante', None)
+        if restaurant is None:
+            from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
+            raise DjangoPermissionDenied('Apenas restaurantes podem criar pedidos.')
         order_form = OrderForm(request.POST)
-
-        print("POST:", request.POST)
-        print("ORDER VALID:", order_form.is_valid())
-        print("ORDER ERRORS:", order_form.errors)
 
         if order_form.is_valid():
 
             order = order_form.save(commit=False)            
             order.status = Order.Status.APPROVED
-            order.restaurante = getattr(self.request.user.perfil,'restaurante', None)
-            order.save()
-
-            return redirect(self.success_url)
+            order.restaurante = restaurant
+            try:
+                with transaction.atomic():
+                    order.save()
+                    DeliveryService.reserve(order)
+            except ValueError as exc:
+                order_form.add_error(None, str(exc))
+            else:
+                return redirect(self.success_url)
 
         context = {
             'order_form': order_form,
@@ -221,12 +242,14 @@ class OrderUpdateView(CustomView):
 
     def get_object(self):
         return get_object_or_404(
-            Order.objects.select_related(
+            (Order.objects.select_for_update() if self.request.method == 'POST' else Order.objects.all()).select_related(
                 'restaurante',
                 'entregador',
                 'cliente'
             ),
-            public_id=self.kwargs['public_id']
+            public_id=self.kwargs['public_id'],
+            restaurante__usuario__user=self.request.user,
+            status__in=['created', 'approved'],
         )
 
     def get(self, request, *args, **kwargs):
@@ -255,9 +278,12 @@ class OrderUpdateView(CustomView):
 
             order = order_form.save(commit=False)
 
-            order.save()
-
-            return redirect(self.success_url)
+            # A cotação está reservada: alterações de destino exigem novo pedido.
+            if any(field in order_form.changed_data for field in ['latitude', 'longitude', 'address']):
+                order_form.add_error(None, 'Para alterar o destino, cancele este pedido e crie outro com um novo frete.')
+            else:
+                order.save()
+                return redirect(self.success_url)
 
         return render(request, self.template_name, {
             'order_form': order_form,
@@ -276,76 +302,48 @@ class OrderDetailView(CustomDetailView):
     context_object_name = 'object'
     slug_field = 'public_id'
     slug_url_kwarg = 'public_id'
+    def get_queryset(self):
+        profile = getattr(self.request.user, 'perfil', None)
+        if self.request.user.is_superuser:
+            return Order.objects.all()
+        return Order.objects.filter(
+            Q(restaurante__usuario=profile) | Q(entregador__usuario=profile) | Q(cliente__usuario=profile)
+        ) if profile else Order.objects.none()
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        usuario = self.request.user.perfil
-        context['tipo_usuario'] = usuario.tipo
+        usuario = getattr(self.request.user, 'perfil', None)
+        context['tipo_usuario'] = usuario.tipo if usuario else ''
         return context
     
     
-class OrderStartDeliveryView(CustomView):
-    permission_codename = [
-        'core.entregador',
-    ]
-    slug_field = 'public_id'
-    slug_url_kwarg = 'public_id'
+class OrderTransitionView(CustomView):
+    target_status = None
+
     def post(self, request, public_id):
-        order = get_object_or_404(
-            Order,
-            public_id=public_id
-        )
-        order.status = Order.Status.IN_TRANSIT
-        order.save()
-        messages.success(
-            request,
-            'Pedido saiu para entrega.'
-        )
-        return redirect(
-            'orders:order_detail',
-            public_id=order.public_id
-        )
+        order = get_object_or_404(Order, public_id=public_id)
+        try:
+            order = DeliveryService.transition(order.pk, request.user, self.target_status)
+        except PermissionError:
+            from django.core.exceptions import PermissionDenied
+            raise PermissionDenied
+        except ValueError as exc:
+            messages.error(request, str(exc))
+        else:
+            messages.success(request, 'Pedido atualizado com sucesso.')
+        return redirect('orders:order_detail', public_id=order.public_id)
 
 
-class OrderDeliveredView(CustomView):
-    permission_codename = [
-        'core.entregador',
-    ]
-    slug_field = 'public_id'
-    slug_url_kwarg = 'public_id'
-    def post(self, request, public_id):
-        order = get_object_or_404(
-            Order,
-            public_id=public_id
-        )
-        order.status = Order.Status.DELIVERED
-        order.save()
-        messages.success(
-            request,
-            'Pedido entregue com sucesso.'
-        )
-        return redirect(
-            'orders:order_detail',
-            public_id=order.public_id
-        )
-    
-class OrderCanceledView(CustomView):
-    permission_codename = [
-        'core.restaurante',
-    ]
-    slug_field = 'public_id'
-    slug_url_kwarg = 'public_id'
-    def post(self, request, public_id):
-        order = get_object_or_404(
-            Order,
-            public_id=public_id
-        )
-        order.status = Order.Status.CANCELED
-        order.save()
-        messages.success(
-            request,
-            'Pedido cancelado.'
-        )
-        return redirect(
-            'orders:order_detail',
-            public_id=order.public_id
-        )
+class OrderStartDeliveryView(OrderTransitionView):
+    permission_codename = ['core.entregador']
+    target_status = 'in_transit'
+
+
+class OrderDeliveredView(OrderTransitionView):
+    permission_codename = ['core.entregador']
+    target_status = 'delivered'
+
+
+class OrderCanceledView(OrderTransitionView):
+    permission_codename = ['core.restaurante']
+    target_status = 'canceled'

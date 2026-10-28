@@ -374,6 +374,7 @@
                         ${order.customer_name}<br>
 
                         Restaurante: ${order.restaurante_nome}<br>
+                        <span class="badge bg-success">${order.delivery_fee != null ? `Entrega: ${Number(order.delivery_fee).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'})}` : 'Frete calculado no aceite'}</span><br>
 
                         <small>
                             ${statusColor} ${statusLabel}

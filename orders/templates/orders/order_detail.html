@@ -177,6 +177,14 @@ Pedido #{{ object.id }}
 
         </div>
 
+        <div class="card shadow-sm info-card mb-4"><div class="card-body">
+            <h5 class="section-title">Frete e pagamento</h5>
+            {% if object.delivery_fee != None %}
+            <h4>R$ {{ object.delivery_fee|floatformat:2 }}</h4>
+            <p class="small text-muted mb-2">Base R$ {{ object.delivery_base|floatformat:2 }} + {{ object.delivery_distance_km|floatformat:3 }} km × R$ {{ object.delivery_per_km|floatformat:2 }}/km. Distância em linha reta; a rota no mapa pode variar.</p>
+            {% else %}<p>Frete será calculado e reservado no aceite deste pedido anterior à carteira.</p>{% endif %}
+            <span class="badge bg-secondary">{{ object.get_payment_state_display }}</span>
+        </div></div>
         <!-- DATAS -->
         <div class="card shadow-sm info-card mb-4">
 
@@ -206,7 +214,7 @@ Pedido #{{ object.id }}
                 <div class="card-body">
 
                     <div class="d-grid gap-2">
-                        {% if tipo_usuario == 'RESTAURANTE' %}
+                        {% if tipo_usuario == 'RESTAURANTE' and object.status != 'delivered' and object.status != 'canceled' and object.status != 'in_transit' %}
                         <a href="{% url 'orders:order_update' object.public_id %}"
                         class="btn btn-primary">
 
@@ -232,7 +240,7 @@ Pedido #{{ object.id }}
 
                         </form>
                         {% endif %}
-                        {% if object.status == 'accepted' %}
+                        {% if tipo_usuario == 'ENTREGADOR' and object.status == 'accepted' %}
 
                             <form method="POST"
                                 action="{% url 'orders:order_start_delivery' object.public_id %}">
@@ -251,7 +259,7 @@ Pedido #{{ object.id }}
                         {% endif %}
 
 
-                        {% if object.status == 'in_transit' %}
+                        {% if tipo_usuario == 'ENTREGADOR' and object.status == 'in_transit' %}
 
                             <form method="POST"
                                 action="{% url 'orders:order_delivered' object.public_id %}">

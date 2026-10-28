@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+from django.contrib.auth.mixins import LoginRequiredMixin
+from .dashboard import dashboard_context
 from django.http import HttpResponseRedirect
 from django.shortcuts import render, redirect
 from django.contrib.auth import login, logout, get_user_model, update_session_auth_hash,authenticate
@@ -62,14 +64,13 @@ class LoginView(View):
         }
         return render(request, self.template_name, context)
 
-class IndexView(View):
+class IndexView(LoginRequiredMixin, View):
     template_name = 'accounts/index.html'
+    login_url = 'core:login'
 
     def get(self, request, *args, **kwargs):
 
-        context = {
-            'page_title': 'Home Page'
-        }
+        context = dashboard_context(request.user)
         return render(request, self.template_name, context)
 
 

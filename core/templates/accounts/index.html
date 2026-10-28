@@ -1,42 +1,35 @@
 {% extends 'base.html' %}
-
-{% block title %}Index{% endblock %}
-{% block page_title %}{{ page_title }}{% endblock %}
-
+{% block title %}Início • Ask Delivery{% endblock %}
+{% block page_title %}Início{% endblock %}
+{% block extra_css %}
+<style>
+.home-hero{background:linear-gradient(120deg,#172d46,#235c68);color:white;border-radius:18px;padding:28px}.home-hero p{color:#d8e7ed}.home-metric{border:1px solid #e5e9ef;border-radius:14px;padding:20px;height:100%;background:#fff}.home-metric strong{display:block;font-size:1.65rem;overflow-wrap:anywhere;margin:8px 0}.home-section{border:1px solid #e5e9ef;border-radius:14px;padding:22px;height:100%}.home-shortcut{border:1px solid #e5e9ef;border-radius:12px;padding:16px;color:#243c55;text-decoration:none;display:flex;gap:12px;align-items:center;height:100%}.home-shortcut:hover{background:#f1f6fb;border-color:#96b3cc}.home-shortcut i{font-size:1.4rem}.home-empty{padding:24px 0;color:#6c757d}.home-section h2{font-size:1.1rem;font-weight:600}.home-money{white-space:nowrap}
+</style>
+{% endblock %}
 {% block content %}
-
-<div class="row g-4">
-
-    <div class="col-md-4">
-        <div class="page-card text-center">
-            <h6 class="text-muted">Clientes</h6>
-            <h2>125</h2>
+<div class="home-hero mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3">
+        <div><div class="small mb-2">{% if dashboard_role == 'admin' %}PAINEL ADMINISTRATIVO{% elif dashboard_role == 'restaurant' %}PAINEL DO RESTAURANTE{% elif dashboard_role == 'driver' %}PAINEL DO ENTREGADOR{% else %}ASK DELIVERY{% endif %}</div>
+            <h1 class="h3">{{ heading }}</h1><p class="mb-2">{{ subtitle }}</p>
+            <span class="small">Olá, {{ request.user.first_name|default:request.user.username }}. Dados de {{ updated_at|date:'d/m/Y H:i' }}.</span>
         </div>
+        <a class="btn btn-light btn-sm" href="{% url 'core:index' %}"><i class="bi bi-arrow-clockwise me-1"></i>Atualizar painel</a>
     </div>
-
-    <div class="col-md-4">
-        <div class="page-card text-center">
-            <h6 class="text-muted">Pedidos</h6>
-            <h2>48</h2>
-        </div>
-    </div>
-
-    <div class="col-md-4">
-        <div class="page-card text-center">
-            <h6 class="text-muted">Faturamento</h6>
-            <h2>R$ 18.450</h2>
-        </div>
-    </div>
-
+    {% if restaurant %}<div class="mt-3"><span class="badge bg-light text-dark">{% if restaurant.aberto %}Restaurante aberto{% else %}Restaurante fechado{% endif %}</span></div>{% endif %}
+    {% if driver %}<div class="mt-3 d-flex flex-wrap gap-2"><span class="badge bg-light text-dark">{{ driver.get_status_display }}</span><span class="badge bg-light text-dark">{% if driver.disponivel %}Disponível{% else %}Indisponível{% endif %}</span><span class="badge bg-light text-dark">{{ driver.get_tipo_veiculo_display }}</span></div>{% endif %}
 </div>
-
-<div class="mt-4">
-    <div class="page-card">
-        <h5>Bem-vindo ao Dashboard</h5>
-        <p class="text-muted mb-0">
-            Você está logado no painel administrativo.
-        </p>
-    </div>
-</div>
-
+{% for notice in notices %}<div class="alert alert-warning"><i class="bi bi-info-circle me-2"></i>{{ notice }}</div>{% endfor %}
+<div class="row g-3 mb-4">{% for item in metrics %}<div class="col-12 col-sm-6 col-xl-4"><div class="home-metric"><span class="text-muted small">{{ item.label }}</span><strong>{% if item.money %}R$ {{ item.value|floatformat:2 }}{% else %}{{ item.value }}{% endif %}</strong><div class="small text-muted">{{ item.hint }}</div></div></div>{% endfor %}</div>
+{% if shortcuts %}<h2 class="h5 mb-3">Acesso rápido</h2><div class="row g-3 mb-4">{% for item in shortcuts %}<div class="col-sm-6 col-xl-4"><a class="home-shortcut" href="{% url item.url %}"><i class="bi bi-{{ item.icon }}"></i><span>{{ item.label }}</span><i class="bi bi-arrow-right ms-auto small"></i></a></div>{% endfor %}</div>{% endif %}
+{% if dashboard_role == 'admin' %}
+<div class="row g-3 mb-4"><div class="col-lg-8"><section class="home-section"><div class="d-flex justify-content-between gap-2"><h2>Solicitações financeiras pendentes</h2><a href="{% url 'wallet:management' %}" class="small">Analisar todas</a></div>
+{% for item in pending_requests %}<div class="border-bottom py-3 d-flex flex-wrap justify-content-between gap-2"><div>{{ item.wallet.usuario }}<div class="small text-muted">{{ item.get_kind_display }} • {{ item.created_at|date:'d/m H:i' }}</div></div><strong>R$ {{ item.amount|floatformat:2 }}</strong></div>{% empty %}<div class="home-empty">Nenhuma solicitação aguardando análise.</div>{% endfor %}
+</section></div><div class="col-lg-4"><section class="home-section"><h2>Cadastros da plataforma</h2><p class="mt-3">{{ people.restaurants }} restaurantes <span class="text-muted">({{ open_restaurants }} abertos)</span></p><p>{{ people.drivers }} entregadores</p><p class="mb-0">{{ people.customers }} clientes</p></section></div></div>
+{% elif dashboard_role == 'restaurant' or dashboard_role == 'driver' %}
+<div class="row g-3 mb-4"><div class="col-lg-8"><section class="home-section"><div class="d-flex justify-content-between gap-2"><h2>Últimas movimentações da carteira</h2><a class="small" href="{% url 'wallet:dashboard' %}">Ver extrato</a></div>
+{% for item in transactions %}<div class="border-bottom py-3 d-flex flex-wrap justify-content-between gap-2"><div>{{ item.get_tipo_display }}{% if item.pedido_id %} • Pedido #{{ item.pedido_id }}{% endif %}<div class="small text-muted">{{ item.created_at|date:'d/m/Y H:i' }}</div></div><strong>R$ {{ item.valor|floatformat:2 }}</strong></div>{% empty %}<div class="home-empty">Sua carteira ainda não possui movimentações.</div>{% endfor %}
+<p class="small text-muted mb-0 mt-3">{{ pending_count }} solicitação(ões) aguardando confirmação. Valores acima representam o valor de cada movimentação.</p></section></div>
+<div class="col-lg-4"><section class="home-section">{% if driver %}<h2>Pronto para a próxima corrida?</h2><p class="mt-3"><strong>{{ available_orders }}</strong> pedido(s) sem entregador na plataforma.</p><p class="small text-muted">Abra o rastreamento no canto da tela para controlar sua disponibilidade.</p><a href="{% url 'orders:orders_dashboard' %}" class="btn btn-primary">Buscar corridas</a>{% else %}<h2>Planeje as próximas entregas</h2><p class="mt-3">O frete é reservado ao criar o pedido. Confira o saldo disponível antes de iniciar uma nova entrega.</p><a href="{% url 'orders:orders_criar' %}" class="btn btn-primary">Criar pedido</a>{% endif %}</section></div></div>
+{% endif %}
+{% if dashboard_role != 'basic' %}<div class="row g-3"><div class="col-xl-7"><section class="home-section"><h2>Pedidos em andamento</h2>{% include 'accounts/dashboard/order_table.html' with items=active_orders empty_message='Nenhuma entrega em andamento no momento.' %}</section></div><div class="col-xl-5"><section class="home-section"><h2>Últimos pedidos finalizados</h2>{% include 'accounts/dashboard/order_table.html' with items=recent_orders empty_message='Nenhum pedido finalizado ainda.' %}</section></div></div>{% endif %}
 {% endblock %}

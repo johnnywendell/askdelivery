@@ -39,6 +39,10 @@ class OrderSerializer(serializers.ModelSerializer):
 
         fields = [
             'id',
+            'address',
+            'delivery_fee',
+            'delivery_distance_km',
+            'payment_state',
 
             'customer_name',
             'customer_phone',
@@ -66,6 +70,7 @@ class OrderSerializer(serializers.ModelSerializer):
         ]
 
         read_only_fields = [
+            'restaurante', 'delivery_fee', 'delivery_distance_km', 'payment_state',
             'status',
             'entregador',
             'created_at',
