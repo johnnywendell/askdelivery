@@ -6,6 +6,8 @@ from django.contrib.auth.views import LogoutView
 app_name = 'core'
 urlpatterns = [
     path('', v.IndexView.as_view(), name='index'),
+    path('cadastro/', v.SolicitarCadastroView.as_view(), name='solicitar_cadastro'),
+    path('usuarios/<int:pk>/aprovar/', v.AprovarCadastroView.as_view(), name='aprovar_cadastro'),
     path('login/', v.LoginView.as_view(), name='login'),
     path('logout/',
             LogoutView.as_view(next_page='core:login'),

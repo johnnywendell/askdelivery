@@ -10,7 +10,7 @@ import time
 
 class StaffUserRequiredMixin(object):
 
-    @method_decorator(login_required(login_url='login:loginview'))
+    @method_decorator(login_required(login_url='core:login'))
     def dispatch(self, request, *args, **kwargs):
         if not request.user.is_staff:
             messages.add_message(
@@ -23,7 +23,7 @@ class StaffUserRequiredMixin(object):
 
 class SuperUserRequiredMixin(object):
 
-    @method_decorator(login_required(login_url='login:loginview'))
+    @method_decorator(login_required(login_url='core:login'))
     def dispatch(self, request, *args, **kwargs):
         if not request.user.is_superuser:
             messages.add_message(

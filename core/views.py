@@ -103,17 +103,9 @@ class ClienteCreateView(SuperUserRequiredMixin,CustomView):
         cliente_form = ClienteForm(request.POST)
 
 
-        print("POST:", request.POST)
-        print("FILES:", request.FILES)
         
-        print("CLIENTE VALID:", user_form.is_valid())
-        print("CLIENTE ERRORS:", user_form.errors)
 
-        print("CLIENTE VALID:", cliente_form.is_valid())
-        print("CLIENTE ERRORS:", cliente_form.errors)
 
-        print("USUARIO VALID:", usuario_form.is_valid())
-        print("USUARIO ERRORS:", usuario_form.errors)
 
         if (
             user_form.is_valid()
@@ -136,7 +128,6 @@ class ClienteCreateView(SuperUserRequiredMixin,CustomView):
             # salva Usuario
             usuario = usuario_form.save(commit=False)
 
-            print("FOTO FORM:", usuario_form.cleaned_data.get('foto'))
 
             usuario.user = user
             usuario.tipo = 'CLIENTE'
@@ -290,17 +281,9 @@ class RestauranteCreateView(SuperUserRequiredMixin,CustomView):
 
         restaurante_form = RestauranteForm(request.POST)
         
-        print("POST:", request.POST)
-        print("FILES:", request.FILES)
         
-        print("CLIENTE VALID:", user_form.is_valid())
-        print("CLIENTE ERRORS:", user_form.errors)
 
-        print("CLIENTE VALID:", restaurante_form.is_valid())
-        print("CLIENTE ERRORS:", restaurante_form.errors)
 
-        print("USUARIO VALID:", usuario_form.is_valid())
-        print("USUARIO ERRORS:", usuario_form.errors)
 
         if (
             user_form.is_valid()
@@ -670,6 +653,7 @@ class UsuarioListView(SuperUserRequiredMixin,CustomView, ListView):
             usuario.urls = self.get_urls(usuario)
             usuario.badge = self.get_tipo_badge(usuario.tipo)
 
+        context['solicitacoes'] = Usuario.objects.filter(cadastro_pendente=True).select_related('user').order_by('criado_em')
         context['page_title'] = 'Usuários'
         context['search'] = self.request.GET.get('search', '')
 
@@ -722,6 +706,7 @@ class MeuPerfilView(CustomTemplateView):
 
         return context
 
+    @transaction.atomic
     def post(self, request, *args, **kwargs):
 
         usuario = request.user.perfil
@@ -763,12 +748,13 @@ class MeuPerfilView(CustomTemplateView):
         if (
             user_form.is_valid() and
             usuario_form.is_valid() and
-            tipo_form.is_valid()
+            (tipo_form is None or tipo_form.is_valid())
         ):
 
             user_form.save()
             usuario_form.save()
-            tipo_form.save()
+            if tipo_form is not None:
+                tipo_form.save()
 
             messages.success(
                 request,
@@ -807,3 +793,69 @@ class UsuarioDeleteView(SuperUserRequiredMixin, DeleteView):
 
 
 
+
+
+class SolicitarCadastroView(View):
+    tipos = {'CLIENTE': 'Cliente', 'RESTAURANTE': 'Restaurante', 'ENTREGADOR': 'Entregador'}
+
+    def get(self, request):
+        return self.render(request)
+
+    def render(self, request, forms=None):
+        from .forms import cadastro_forms
+        tipo = request.POST.get('tipo', '') if request.method == 'POST' else request.GET.get('tipo', '')
+        if tipo not in self.tipos:
+            tipo = 'CLIENTE'
+        return render(request, 'accounts/solicitar_cadastro.html', {
+            'tipo': tipo, 'tipos': self.tipos, 'forms': forms or cadastro_forms(tipo),
+        })
+
+    @transaction.atomic
+    def post(self, request):
+        from .forms import cadastro_forms
+        from django.http import HttpResponseBadRequest
+        tipo = request.POST.get('tipo')
+        if tipo not in self.tipos:
+            return HttpResponseBadRequest('Tipo de cadastro inválido.')
+        forms = cadastro_forms(tipo, request.POST, request.FILES)
+        if all([form.is_valid() for form in forms]):
+            user_form, perfil_form, tipo_form = forms
+            user = user_form.save(commit=False)
+            user.username = user.email
+            user.is_active = False
+            user.save()
+            perfil = perfil_form.save(commit=False)
+            perfil.user = user
+            perfil.tipo = tipo
+            perfil.ativo = False
+            perfil.cadastro_pendente = True
+            perfil.save()
+            dados = tipo_form.save(commit=False)
+            dados.usuario = perfil
+            dados.save()
+            messages.success(request, 'Solicitação enviada. Aguarde a aprovação do administrador para entrar.')
+            return redirect('core:login')
+        return self.render(request, forms)
+
+
+class AprovarCadastroView(SuperUserRequiredMixin, View):
+    @transaction.atomic
+    def post(self, request, pk):
+        from django.shortcuts import get_object_or_404
+        from django.utils import timezone
+        perfil = get_object_or_404(Usuario.objects.select_for_update(), pk=pk)
+        if perfil.cadastro_pendente:
+            user = User.objects.select_for_update().get(pk=perfil.user_id)
+            permission = Permission.objects.get(content_type__app_label='core', codename=perfil.tipo.lower())
+            user.user_permissions.add(permission)
+            user.is_active = True
+            user.save(update_fields=['is_active'])
+            perfil.ativo = True
+            perfil.cadastro_pendente = False
+            perfil.aprovado_em = timezone.now()
+            perfil.aprovado_por = request.user
+            perfil.save(update_fields=['ativo', 'cadastro_pendente', 'aprovado_em', 'aprovado_por'])
+            if perfil.tipo == 'ENTREGADOR':
+                Entregador.objects.filter(usuario=perfil).update(aprovado=True)
+            messages.success(request, 'Cadastro aprovado. O usuário já pode entrar.')
+        return redirect('core:usuario_list')

@@ -5,6 +5,11 @@
 {% block page_title %}Usuários{% endblock %}
 
 {% block content %}
+{% if solicitacoes %}<section class="page-card mb-4"><h2 class="h5">Solicitações de cadastro</h2>
+{% for solicitacao in solicitacoes %}<div class="border-bottom p-3"><strong>{{ solicitacao.user.get_full_name }}</strong> · {{ solicitacao.get_tipo_display }}<br>{{ solicitacao.user.email }} · {{ solicitacao.user.telefone }}<br>
+<a class="btn btn-sm btn-outline-primary my-2" href="{% if solicitacao.tipo == 'CLIENTE' %}{% url 'core:cliente_detail' solicitacao.cliente.pk %}{% elif solicitacao.tipo == 'RESTAURANTE' %}{% url 'core:restaurante_detail' solicitacao.restaurante.pk %}{% else %}{% url 'core:entregador_detail' solicitacao.entregador.pk %}{% endif %}">Ver cadastro</a>
+<form method="post" action="{% url 'core:aprovar_cadastro' solicitacao.pk %}">{% csrf_token %}<button class="btn btn-sm btn-success">Aprovar cadastro</button></form></div>{% endfor %}</section>{% endif %}
+
 
 <div class="page-card">
 

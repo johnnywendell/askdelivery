@@ -306,6 +306,7 @@
 
         </div>
 
+        {% for message in messages %}<div class="alert alert-info">{{ message }}</div>{% endfor %}
         {% if error %}
             <div class="alert alert-danger">
                 {{ error }}
@@ -355,6 +356,7 @@
             </button>
 
         </form>
+        <a class="btn btn-outline-light w-100 mt-3" href="{% url 'core:solicitar_cadastro' %}">Solicitar cadastro</a>
 
     </div>
 

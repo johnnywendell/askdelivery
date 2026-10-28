@@ -15,6 +15,7 @@ Meu Perfil
 <form method="POST" enctype="multipart/form-data">
 
     {% csrf_token %}
+    {{ user_form.errors }}{{ usuario_form.errors }}{{ tipo_form.errors }}
 
     <div class="row g-4">
 
@@ -76,6 +77,7 @@ Meu Perfil
 
                 <div class="row g-3">
 
+                    {% if tipo == 'ADMIN' %}<p>Perfil administrativo. Você pode atualizar seus dados de acesso e sua foto.</p>{% endif %}
                     {% if tipo == 'CLIENTE' %}
 
                         <div class="col-md-4">
@@ -295,7 +297,7 @@ Meu Perfil
 
                 <div class="form-check form-switch mb-3">
 
-                    {{ usuario_form.ativo }}
+                    {{ perfil.ativo|yesno:"Ativo,Inativo" }}
 
                     <label class="form-check-label">
                         Perfil ativo

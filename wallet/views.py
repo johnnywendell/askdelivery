@@ -80,6 +80,12 @@ def quote(request):
     if request.method != 'GET':
         return JsonResponse({'error': 'Método não permitido.'}, status=405)
     restaurant = getattr(getattr(request.user, 'perfil', None), 'restaurante', None)
+    if request.user.is_superuser:
+        from core.models import Restaurante
+        try:
+            restaurant = Restaurante.objects.get(pk=request.GET.get('restaurante'), usuario__ativo=True, usuario__user__is_active=True)
+        except (Restaurante.DoesNotExist, ValueError, TypeError):
+            return JsonResponse({'error': 'Selecione o restaurante responsável pelo pedido.'}, status=400)
     if restaurant is None:
         return JsonResponse({'error': 'Apenas restaurantes podem cotar entregas.'}, status=403)
     try:

@@ -7,7 +7,7 @@ from django.utils.deprecation import MiddlewareMixin
 from .settings import LOGIN_NOT_REQUIRED
 
 from threading import local
-from core.models import User
+from core.models import User, Usuario
 
 
 class LoginRequiredMiddleware(MiddlewareMixin):
@@ -21,6 +21,8 @@ class LoginRequiredMiddleware(MiddlewareMixin):
     def process_view(self, request, view_func, view_args, view_kwargs):
         # Caso o user ja esteja logado:
         if request.user.is_authenticated:
+            if request.user.is_superuser:
+                Usuario.objects.get_or_create(user=request.user, defaults={'tipo': 'ADMIN'})
             if re.match(r'/canteirojato/romaneio/pdf/', request.path):
                 return None
             for url in self.exceptions:

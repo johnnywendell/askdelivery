@@ -9,7 +9,7 @@
       href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 {% endblock %}
 {% block content %}
-<div class="alert alert-info">O frete será calculado automaticamente (base + valor por km em linha reta) e reservado na sua carteira ao salvar. É necessário saldo disponível. Após a reserva, alterações de destino exigem cancelar e criar outro pedido. <a href="{% url 'wallet:dashboard' %}">Acessar carteira</a></div>
+<div class="alert alert-info">O frete será calculado automaticamente (base + valor por km em linha reta) e reservado na carteira do restaurante responsável ao salvar. É necessário saldo disponível. Após a reserva, alterações de destino exigem cancelar e criar outro pedido. <a href="{% url 'wallet:dashboard' %}">Acessar carteira</a></div>
 {{ order_form.non_field_errors }}
 <div id="delivery-quote" class="alert alert-light border" role="status" aria-live="polite" data-url="{% url 'wallet:quote' %}">
 {% if is_update %}Frete reservado: R$ {{ object.delivery_fee|floatformat:2 }}. O destino deste pedido não pode ser alterado.{% else %}Selecione um destino para visualizar o frete antes de salvar.{% endif %}
@@ -25,6 +25,7 @@
     <form method="POST">
         {% csrf_token %}
         <div class="row">
+            {% if order_form.restaurante %}<div class="col-12 mb-3"><label for="id_restaurante">Restaurante responsável</label>{{ order_form.restaurante }}<small>O frete será reservado na carteira deste restaurante.</small></div>{% endif %}
             <!-- Cliente -->
             <div class="col-md-4 mb-3">
                 <label>Nome do Cliente</label>
@@ -125,6 +126,8 @@
         }
         box.textContent = 'Calculando frete...';
         const url = new URL(box.dataset.url, window.location.origin);
+        const restaurant = document.getElementById('id_restaurante');
+        if (restaurant) url.searchParams.set('restaurante', restaurant.value);
         url.searchParams.set('latitude', latitude.value);
         url.searchParams.set('longitude', longitude.value);
         try {
@@ -139,6 +142,7 @@
             if (sequence === quoteSequence) box.textContent = 'Não foi possível consultar o frete. Tente selecionar o destino novamente.';
         }
     }
+    document.getElementById('id_restaurante')?.addEventListener('change', updateDeliveryQuote);
     if (latitude.value && longitude.value) updateDeliveryQuote();
 
     /*

@@ -37,6 +37,13 @@ class Usuario(models.Model):
 
     tipo = models.CharField(max_length=20, choices=TIPO)
 
+    cadastro_pendente = models.BooleanField(default=False)
+    aprovado_em = models.DateTimeField(null=True, blank=True)
+    aprovado_por = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='cadastros_aprovados',
+    )
+
     foto = models.ImageField(
         upload_to=user_directory_path,
         blank=True,

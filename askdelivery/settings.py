@@ -83,6 +83,7 @@ WSGI_APPLICATION = 'askdelivery.wsgi.application'
 
 LOGIN_NOT_REQUIRED = (
     r'^/login/$',
+    r'^/cadastro/$',
 
 )
 # Database

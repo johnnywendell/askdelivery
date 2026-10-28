@@ -89,3 +89,146 @@ class IndexDashboardTests(TestCase):
     def test_anonymous_redirects_to_login(self):
         response = self.client.get(reverse('core:index'))
         self.assertRedirects(response, reverse('core:login'), fetch_redirect_response=False)
+
+
+class CadastroApprovalTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(username='root', email='root@example.test', password='Admin-test-987!')
+
+    def test_admin_gets_profile_and_can_edit_it(self):
+        self.assertFalse(Usuario.objects.filter(user=self.admin).exists())
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse('core:meu_perfil'))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Usuario.objects.get(user=self.admin).tipo, 'ADMIN')
+        response = self.client.post(reverse('core:meu_perfil'), {'first_name': 'Admin', 'last_name': 'Teste', 'email': self.admin.email, 'telefone': '123'})
+        self.assertRedirects(response, reverse('core:meu_perfil'))
+        self.admin.refresh_from_db()
+        self.assertEqual(self.admin.first_name, 'Admin')
+        self.assertEqual(Usuario.objects.filter(user=self.admin).count(), 1)
+
+    def payload(self, kind):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from io import BytesIO
+        from PIL import Image
+        image = BytesIO()
+        Image.new('RGB', (1, 1)).save(image, format='PNG')
+        data = {'tipo': kind, 'user-first_name': 'Teste', 'user-last_name': 'Cadastro',
+                'user-email': 'novo@example.test', 'user-telefone': '71999999999',
+                'user-password': 'Secure-pass-2846!', 'user-confirm_password': 'Secure-pass-2846!',
+                'perfil-foto': SimpleUploadedFile('foto.png', image.getvalue(), content_type='image/png')}
+        from .forms import cadastro_forms
+        form = cadastro_forms(kind)[2]
+        values = {'cpf': '12345678901', 'data_nascimento': '1990-01-01', 'sexo': 'NA',
+                  'address': 'Rua Teste, 10', 'latitude': '-12.97', 'longitude': '-38.50',
+                  'nome_fantasia': 'Cozinha Teste', 'razao_social': 'Cozinha Ltda', 'cnpj': '12345678000199',
+                  'descricao': 'Refeições', 'telefone_comercial': '7133333333', 'taxa_entrega': '5',
+                  'tempo_preparo_min': '30', 'cnh': '12345678900', 'tipo_veiculo': 'MOTO', 'placa': 'ABC1234'}
+        for name in form.fields:
+            if name in values:
+                data['dados-' + name] = values[name]
+        return data
+
+    def test_each_role_stays_inactive_until_admin_approval(self):
+        from tempfile import TemporaryDirectory
+        from django.test import override_settings
+        for kind in ('CLIENTE', 'RESTAURANTE', 'ENTREGADOR'):
+            with self.subTest(kind=kind), TemporaryDirectory() as media, override_settings(MEDIA_ROOT=media):
+                self.client.logout()
+                data = self.payload(kind)
+                data['user-email'] = kind.lower() + '@example.test'
+                response = self.client.post(reverse('core:solicitar_cadastro'), data)
+                self.assertRedirects(response, reverse('core:login'))
+                user = User.objects.get(email=data['user-email'])
+                perfil = user.perfil
+                self.assertFalse(user.is_active)
+                self.assertFalse(perfil.ativo)
+                self.assertTrue(perfil.cadastro_pendente)
+                self.assertFalse(user.user_permissions.exists())
+                self.assertFalse(self.client.login(email=user.email, password=data['user-password']))
+                self.client.force_login(self.admin)
+                self.assertContains(self.client.get(reverse('core:usuario_list')), user.email)
+                url = reverse('core:aprovar_cadastro', args=[perfil.pk])
+                self.assertEqual(self.client.get(url).status_code, 405)
+                self.assertRedirects(self.client.post(url), reverse('core:usuario_list'))
+                self.client.post(url)
+                user.refresh_from_db()
+                perfil.refresh_from_db()
+                self.assertTrue(user.is_active)
+                self.assertTrue(perfil.ativo)
+                self.assertFalse(perfil.cadastro_pendente)
+                self.assertEqual(perfil.aprovado_por, self.admin)
+                self.assertTrue(user.has_perm('core.' + kind.lower()))
+                self.client.logout()
+                self.assertTrue(self.client.login(email=user.email, password=data['user-password']))
+
+    def test_public_pages_and_required_fields(self):
+        self.assertContains(self.client.get(reverse('core:login')), 'Solicitar cadastro')
+        self.assertEqual(self.client.get(reverse('core:solicitar_cadastro')).status_code, 200)
+        response = self.client.post(reverse('core:solicitar_cadastro'), {'tipo': 'CLIENTE'})
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(User.objects.filter(is_superuser=False).exists())
+        self.assertEqual(self.client.post(reverse('core:solicitar_cadastro'), {'tipo': 'ADMIN'}).status_code, 400)
+
+    def test_non_superuser_cannot_approve(self):
+        user = User.objects.create_user(username='staff', email='staff@example.test', is_staff=True)
+        perfil = Usuario.objects.create(user=user, tipo='ADMIN', cadastro_pendente=True)
+        self.client.force_login(user)
+        response = self.client.post(reverse('core:aprovar_cadastro', args=[perfil.pk]))
+        self.assertEqual(response.status_code, 302)
+        perfil.refresh_from_db()
+        self.assertTrue(perfil.cadastro_pendente)
+
+    def test_admin_can_create_order_for_selected_restaurant(self):
+        from wallet.services import WalletService
+        owner = User.objects.create_user(username='kitchen', email='kitchen@example.test')
+        perfil = Usuario.objects.create(user=owner, tipo='RESTAURANTE')
+        restaurant = Restaurante.objects.create(usuario=perfil, nome_fantasia='Cozinha', latitude=-12.97, longitude=-38.50)
+        WalletService.depositar(perfil.wallet, 100)
+        self.client.force_login(self.admin)
+        url = reverse('orders:orders_criar')
+        self.assertContains(self.client.get(url), 'Restaurante responsável')
+        data = {'restaurante': restaurant.pk, 'customer_name': 'Cliente', 'customer_phone': '71999999999',
+                'address': 'Rua Destino', 'latitude': '-12.97', 'longitude': '-38.50'}
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, 302)
+        order = Order.objects.get()
+        self.assertEqual(order.restaurante, restaurant)
+        self.assertEqual(order.payment_state, 'reserved')
+        self.assertEqual(self.client.get(reverse('wallet:quote'), {'restaurante': restaurant.pk, 'latitude': '-12.97', 'longitude': '-38.50'}).status_code, 200)
+        data.pop('restaurante')
+        self.assertEqual(self.client.post(url, data).status_code, 200)
+        self.assertEqual(Order.objects.count(), 1)
+
+    def test_registration_rejects_incomplete_invalid_and_duplicate_data(self):
+        from tempfile import TemporaryDirectory
+        from django.test import override_settings
+        with TemporaryDirectory() as media, override_settings(MEDIA_ROOT=media):
+            for field, value in [('dados-cpf', ''), ('dados-latitude', '91'), ('user-confirm_password', 'different'), ('perfil-foto', '')]:
+                data = self.payload('CLIENTE')
+                data[field] = value
+                self.assertEqual(self.client.post(reverse('core:solicitar_cadastro'), data).status_code, 200)
+                self.assertFalse(User.objects.filter(email='novo@example.test').exists())
+            data = self.payload('CLIENTE')
+            data['user-email'] = self.admin.email.upper()
+            self.assertEqual(self.client.post(reverse('core:solicitar_cadastro'), data).status_code, 200)
+            self.assertEqual(User.objects.count(), 1)
+
+    def test_public_registration_and_approval_require_csrf(self):
+        from django.test import Client
+        client = Client(enforce_csrf_checks=True)
+        self.assertEqual(client.post(reverse('core:solicitar_cadastro'), {'tipo': 'CLIENTE'}).status_code, 403)
+        client.force_login(self.admin)
+        self.assertEqual(client.post(reverse('core:aprovar_cadastro', args=[1])).status_code, 403)
+
+    def test_admin_api_creation_reserves_selected_restaurant_wallet(self):
+        from wallet.services import WalletService
+        user = User.objects.create_user(username='api-kitchen', email='api-kitchen@example.test')
+        perfil = Usuario.objects.create(user=user, tipo='RESTAURANTE')
+        restaurant = Restaurante.objects.create(usuario=perfil, nome_fantasia='API', latitude=0, longitude=0)
+        WalletService.depositar(perfil.wallet, 50)
+        self.client.force_login(self.admin)
+        response = self.client.post('/orders/orders/create', {'restaurante': restaurant.pk, 'customer_name': 'Teste',
+                                  'customer_phone': '123', 'address': 'Destino', 'latitude': '0', 'longitude': '0'})
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(Order.objects.get().restaurante, restaurant)

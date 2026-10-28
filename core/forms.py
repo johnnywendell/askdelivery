@@ -371,3 +371,44 @@ class DocumentoEntregadorForm(forms.ModelForm):
                 'class': 'form-check-input',
             }),
         }
+
+class CadastroUserForm(UserCreateForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.required = True
+
+    def clean_email(self):
+        email = self.cleaned_data['email'].strip().lower()
+        if User.objects.filter(email__iexact=email).exists() or User.objects.filter(username=email).exists():
+            raise forms.ValidationError('Já existe um cadastro com este email.')
+        return email
+
+    def clean(self):
+        from django.contrib.auth.password_validation import validate_password
+        data = super().clean()
+        if data.get('password'):
+            candidate = User(**{name: data.get(name, '') for name in ('first_name', 'last_name', 'email')})
+            validate_password(data['password'], candidate)
+        return data
+
+
+def cadastro_forms(tipo, data=None, files=None):
+    classes = {'CLIENTE': ClienteForm, 'RESTAURANTE': RestauranteForm, 'ENTREGADOR': EntregadorForm}
+    user_form = CadastroUserForm(data, prefix='user')
+    perfil_form = UsuarioForm(data, files, prefix='perfil')
+    perfil_form.fields['foto'].required = True
+    tipo_form = classes[tipo](data, prefix='dados')
+    # Disponibilidade é operacional; não é uma escolha no cadastro público.
+    tipo_form.fields.pop('disponivel', None)
+    for name, field in tipo_form.fields.items():
+        if not isinstance(field, forms.BooleanField):
+            field.required = True
+        if name in ('latitude', 'longitude'):
+            field.widget = forms.NumberInput(attrs={'class': 'form-control', 'step': 'any'})
+            field.label = 'Latitude do endereço' if name == 'latitude' else 'Longitude do endereço'
+            field.min_value = -90 if name == 'latitude' else -180
+            field.max_value = 90 if name == 'latitude' else 180
+            from django.core.validators import MinValueValidator, MaxValueValidator
+            field.validators.extend([MinValueValidator(field.min_value), MaxValueValidator(field.max_value)])
+    return user_form, perfil_form, tipo_form

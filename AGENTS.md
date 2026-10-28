@@ -50,3 +50,21 @@ Nunca registre senhas, tokens, conteúdo do `.env` ou dados pessoais de usuário
   Ganhos usam transações de pagamento; saldos globais não representam receita.
 - Validação: 7 testes do index cobrem perfis, isolamento, saldos/ganhos, ausência
   de cadastro/movimentação e login; suíte core/wallet/orders com 37 testes.
+
+
+## Administrador e solicitações de cadastro
+
+- Middleware garante `Usuario(tipo=ADMIN)` ao primeiro acesso autenticado de
+  superusuários sem perfil, inclusive contas antigas/criadas pelo shell.
+  Meu perfil aceita ADMIN sem formulário de subtipo.
+- Admin escolhe restaurante ao criar/cotar pedidos (HTML e API); frete e reserva
+  continuam vinculados à carteira do restaurante escolhido.
+- `/cadastro/` público oferece cliente/restaurante/entregador, exige dados e foto,
+  valida senha e mantém User/Usuario inativos, sem permissões, até aprovação.
+  Opções booleanas são livres; endereço tem busca e seleção no mapa.
+- Lista de usuários mostra solicitações e dados para revisão. Aprovação somente
+  por superusuário via POST/CSRF, atômica e idempotente, registra responsável/data,
+  ativa a conta e concede apenas a permissão do tipo. Entregador fica aprovado.
+- Removidos prints de POST/FILES dos cadastros administrativos.
+- Migração core 0002 necessária; banco real não alterado. Validação em banco
+  temporário: 45 testes core/wallet/orders; migrações sem divergências.

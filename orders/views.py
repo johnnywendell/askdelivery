@@ -26,6 +26,14 @@ class CreateOrderAPIView(APIView):
 
     def post(self, request):
         restaurant = getattr(getattr(request.user, 'perfil', None), 'restaurante', None)
+        if request.user.is_superuser:
+            from core.models import Restaurante
+            from django import forms
+            field = forms.ModelChoiceField(queryset=Restaurante.objects.filter(usuario__ativo=True, usuario__user__is_active=True))
+            try:
+                restaurant = field.clean(request.data.get('restaurante'))
+            except forms.ValidationError as exc:
+                raise ValidationError({'restaurante': exc.messages})
         if restaurant is None:
             raise PermissionDenied('Apenas restaurantes podem criar pedidos.')
         serializer = OrderSerializer(data=request.data)
@@ -196,7 +204,7 @@ class OrderCreateView(CustomView):
     def get(self, request, *args, **kwargs):
 
         context = {
-            'order_form': OrderForm(),
+            'order_form': OrderForm(user=request.user),
             'is_update': False,
         }
 
@@ -206,16 +214,16 @@ class OrderCreateView(CustomView):
     def post(self, request, *args, **kwargs):
 
         restaurant = getattr(getattr(request.user, 'perfil', None), 'restaurante', None)
-        if restaurant is None:
+        if restaurant is None and not request.user.is_superuser:
             from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
-            raise DjangoPermissionDenied('Apenas restaurantes podem criar pedidos.')
-        order_form = OrderForm(request.POST)
+            raise DjangoPermissionDenied('Apenas restaurantes e administradores podem criar pedidos.')
+        order_form = OrderForm(request.POST, user=request.user)
 
         if order_form.is_valid():
 
             order = order_form.save(commit=False)            
             order.status = Order.Status.APPROVED
-            order.restaurante = restaurant
+            order.restaurante = order_form.cleaned_data['restaurante'] if request.user.is_superuser else restaurant
             try:
                 with transaction.atomic():
                     order.save()
