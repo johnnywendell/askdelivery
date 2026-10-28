@@ -1,4 +1,15 @@
 services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: askdelivery_cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+
+    networks:
+      - askdelivery_network
+
 
   web:
     build: .

@@ -91,7 +91,8 @@ LOGIN_NOT_REQUIRED = (
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+      	'NAME': '/host_project/db.sqlite3',
+	 # 'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
 
