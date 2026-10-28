@@ -138,12 +138,12 @@ MEDIA_ROOT = BASE_DIR / 'media'
 ASSINATURA_URL ='secure-keys/'
 MEDIA_ASS = os.path.join(BASE_DIR, 'secure-keys')
 
-CSRF_TRUSTED_ORIGINS = ['http://192.168.1.71','http://168.181.215.66','http://ask.singularcode.net','https://ask.singularcode.net']
-CSRF_COOKIE_SECURE = False
-SESSION_COOKIE_SECURE = False
+CSRF_TRUSTED_ORIGINS = ['http://192.168.1.71','http://ask.singularcode.net','https://ask.singularcode.net']
+CSRF_COOKIE_SECURE = True
+SESSION_COOKIE_SECURE = True
 
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-SECURE_SSL_REDIRECT = False
+SECURE_SSL_REDIRECT = True
 
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 10000
 SESSION_COOKIE_AGE = 14400
