@@ -22,7 +22,7 @@ from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.template import loader
 
 from django.db import transaction, DatabaseError
-from .forms import UserForm, UserCreateForm, UsuarioForm, ClienteForm, RestauranteForm, EntregadorForm
+from .forms import AdminUserUpdateForm, UserForm, UserCreateForm, UsuarioForm, ClienteForm, RestauranteForm, EntregadorForm
 from askdelivery.settings import DEFAULT_FROM_EMAIL
 
 from django.views.generic import DeleteView
@@ -168,7 +168,7 @@ class ClienteUpdateView(SuperUserRequiredMixin,CustomView):
         cliente = self.get_object()
 
         context = {
-            'user_form': UserCreateForm(
+            'user_form': AdminUserUpdateForm(
                 instance=cliente.usuario.user
             ),
             'usuario_form': UsuarioForm(
@@ -188,7 +188,7 @@ class ClienteUpdateView(SuperUserRequiredMixin,CustomView):
 
         cliente = self.get_object()
 
-        user_form = UserCreateForm(
+        user_form = AdminUserUpdateForm(
             request.POST,
             instance=cliente.usuario.user
         )
@@ -224,6 +224,7 @@ class ClienteUpdateView(SuperUserRequiredMixin,CustomView):
             cliente = cliente_form.save(commit=False)
             cliente.usuario = usuario
             cliente.save()
+            atualizar_ativacao(usuario, request.user)
 
             return redirect(self.success_url)
 
@@ -344,7 +345,7 @@ class RestauranteUpdateView(SuperUserRequiredMixin,CustomView):
         restaurante = self.get_object()
 
         context = {
-            'user_form': UserCreateForm(
+            'user_form': AdminUserUpdateForm(
                 instance=restaurante.usuario.user
             ),
             'usuario_form': UsuarioForm(
@@ -364,7 +365,7 @@ class RestauranteUpdateView(SuperUserRequiredMixin,CustomView):
 
         restaurante = self.get_object()
 
-        user_form = UserCreateForm(
+        user_form = AdminUserUpdateForm(
             request.POST,
             instance=restaurante.usuario.user
         )
@@ -400,6 +401,7 @@ class RestauranteUpdateView(SuperUserRequiredMixin,CustomView):
             restaurante = restaurante_form.save(commit=False)
             restaurante.usuario = usuario
             restaurante.save()
+            atualizar_ativacao(usuario, request.user)
             return redirect(self.success_url)
 
         context = {
@@ -508,7 +510,7 @@ class EntregadorUpdateView(SuperUserRequiredMixin, CustomView):
         entregador = self.get_object()
 
         context = {
-            'user_form': UserCreateForm(
+            'user_form': AdminUserUpdateForm(
                 instance=entregador.usuario.user
             ),
             'usuario_form': UsuarioForm(
@@ -528,7 +530,7 @@ class EntregadorUpdateView(SuperUserRequiredMixin, CustomView):
 
         entregador = self.get_object()
 
-        user_form = UserCreateForm(
+        user_form = AdminUserUpdateForm(
             request.POST,
             instance=entregador.usuario.user
         )
@@ -560,6 +562,7 @@ class EntregadorUpdateView(SuperUserRequiredMixin, CustomView):
             entregador = entregador_form.save(commit=False)
             entregador.usuario = usuario
             entregador.save()
+            atualizar_ativacao(usuario, request.user)
 
             return redirect(self.success_url)
 
@@ -836,6 +839,21 @@ class SolicitarCadastroView(View):
             messages.success(request, 'Solicitação enviada. Aguarde a aprovação do administrador para entrar.')
             return redirect('core:login')
         return self.render(request, forms)
+
+
+def atualizar_ativacao(perfil, responsavel):
+    """Sincroniza acesso e aprovação dentro da transação da edição administrativa."""
+    from django.utils import timezone
+    perfil.ativo = perfil.user.is_active
+    if perfil.ativo and perfil.cadastro_pendente:
+        permission = Permission.objects.get(content_type__app_label='core', codename=perfil.tipo.lower())
+        perfil.user.user_permissions.add(permission)
+        perfil.cadastro_pendente = False
+        perfil.aprovado_em = timezone.now()
+        perfil.aprovado_por = responsavel
+        if perfil.tipo == 'ENTREGADOR':
+            Entregador.objects.filter(usuario=perfil).update(aprovado=True)
+    perfil.save(update_fields=['ativo', 'cadastro_pendente', 'aprovado_em', 'aprovado_por'])
 
 
 class AprovarCadastroView(SuperUserRequiredMixin, View):

@@ -68,3 +68,13 @@ Nunca registre senhas, tokens, conteúdo do `.env` ou dados pessoais de usuário
 - Removidos prints de POST/FILES dos cadastros administrativos.
 - Migração core 0002 necessária; banco real não alterado. Validação em banco
   temporário: 45 testes core/wallet/orders; migrações sem divergências.
+
+## Ajustes de cadastro e ativação
+
+- Cadastro público exibe erros gerais e por campo em vermelho, com borda e rótulo
+  dos campos inválidos destacados. Validação do servidor reúne os avisos ao enviar.
+- Edição exclusiva de superusuário tem controle “Usuário ativo” para cliente,
+  restaurante e entregador; sincroniza User.is_active e Usuario.ativo. Ativação de
+  pendente registra aprovação, concede permissão do tipo e aprova entregador.
+- Validação: 47 testes core/wallet/orders em SQLite temporário, incluindo ativação,
+  desativação, aprovação pela edição e erros do cadastro. Banco real não alterado.

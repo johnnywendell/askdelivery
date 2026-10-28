@@ -155,6 +155,14 @@
 
                     <div class="mb-3">
                         {{ usuario_form.foto }}
+                    {% if is_update %}
+                    <div class="form-check form-switch mt-3 text-start">
+                        {{ user_form.is_active }}
+                        <label class="form-check-label" for="{{ user_form.is_active.id_for_label }}">{{ user_form.is_active.label }}</label>
+                        <div class="form-text">{{ user_form.is_active.help_text }}</div>
+                        {{ user_form.is_active.errors }}
+                    </div>
+                    {% endif %}
                     </div>
 
                     <small class="text-muted">PNG, JPG ou WEBP</small>
@@ -172,10 +180,6 @@
                     <label class="form-check-label ms-2">Receber promoções</label>
                 </div>
 
-                <div class="form-check form-switch">
-                    {{ cliente_form.ativo }}
-                    <label class="form-check-label ms-2">Cliente ativo</label>
-                </div>
             </div>
 
             <!-- Ações -->

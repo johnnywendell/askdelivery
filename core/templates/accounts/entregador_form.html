@@ -85,6 +85,14 @@
                      class="photo-preview mb-3">
 
                 {{ usuario_form.foto }}
+                    {% if is_update %}
+                    <div class="form-check form-switch mt-3 text-start">
+                        {{ user_form.is_active }}
+                        <label class="form-check-label" for="{{ user_form.is_active.id_for_label }}">{{ user_form.is_active.label }}</label>
+                        <div class="form-text">{{ user_form.is_active.help_text }}</div>
+                        {{ user_form.is_active.errors }}
+                    </div>
+                    {% endif %}
             </div>
 
             <div class="form-section mb-4">
@@ -94,10 +102,6 @@
                     <label class="form-check-label">Disponível</label>
                 </div>
 
-                <div class="form-check form-switch">
-                    {{ entregador_form.ativo }}
-                    <label class="form-check-label">Ativo</label>
-                </div>
             </div>
 
             <div class="form-section">

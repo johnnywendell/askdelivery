@@ -95,6 +95,56 @@ class CadastroApprovalTests(TestCase):
     def setUp(self):
         self.admin = User.objects.create_superuser(username='root', email='root@example.test', password='Admin-test-987!')
 
+    def test_public_errors_highlight_fields_and_messages(self):
+        response = self.client.post(reverse('core:solicitar_cadastro'), {'tipo': 'CLIENTE'})
+        self.assertContains(response, 'field-error')
+        self.assertContains(response, 'class="errorlist"')
+        self.assertContains(response, 'aria-invalid="true"')
+        self.assertContains(response, 'Este campo é obrigatório.')
+
+    def test_admin_can_activate_approve_and_deactivate_each_role(self):
+        from tempfile import TemporaryDirectory
+        from django.test import override_settings
+        for kind, route in (('CLIENTE', 'cliente_update'), ('RESTAURANTE', 'restaurante_update'), ('ENTREGADOR', 'entregador_update')):
+            with self.subTest(kind=kind), TemporaryDirectory() as media, override_settings(MEDIA_ROOT=media):
+                self.client.logout()
+                public_data = self.payload(kind)
+                public_data['user-email'] = kind.lower() + '@example.test'
+                self.client.post(reverse('core:solicitar_cadastro'), public_data)
+                user = User.objects.get(email=public_data['user-email'])
+                perfil = user.perfil
+                subtype = getattr(perfil, kind.lower())
+                url = reverse('core:' + route, args=[subtype.pk])
+                # Campos extras não permitem que o próprio usuário ative a conta.
+                self.client.force_login(user)
+                self.assertNotEqual(self.client.post(url, {'is_active': 'on'}).status_code, 200)
+                self.client.force_login(self.admin)
+                self.assertContains(self.client.get(url), 'name="is_active"')
+                data = {key.removeprefix('user-').removeprefix('dados-'): value
+                        for key, value in public_data.items() if key.startswith(('user-', 'dados-'))}
+                data.update(password='', confirm_password='', is_active='on')
+                self.assertRedirects(self.client.post(url, data), reverse('core:usuario_list'))
+                user.refresh_from_db()
+                perfil.refresh_from_db()
+                self.assertTrue(user.is_active)
+                from django.contrib.auth import authenticate
+                self.assertEqual(authenticate(email=user.email, password='Secure-pass-2846!'), user)
+                self.assertTrue(perfil.ativo)
+                self.assertFalse(perfil.cadastro_pendente)
+                self.assertEqual(perfil.aprovado_por, self.admin)
+                self.assertIsNotNone(perfil.aprovado_em)
+                self.assertTrue(user.has_perm('core.' + kind.lower()))
+                if kind == 'ENTREGADOR':
+                    subtype.refresh_from_db()
+                    self.assertTrue(subtype.aprovado)
+                data.pop('is_active')
+                self.assertRedirects(self.client.post(url, data), reverse('core:usuario_list'))
+                user.refresh_from_db()
+                perfil.refresh_from_db()
+                self.assertFalse(user.is_active)
+                self.assertFalse(perfil.ativo)
+                self.assertFalse(self.client.login(email=user.email, password='Secure-pass-2846!'))
+
     def test_admin_gets_profile_and_can_edit_it(self):
         self.assertFalse(Usuario.objects.filter(user=self.admin).exists())
         self.client.force_login(self.admin)

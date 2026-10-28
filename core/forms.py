@@ -120,6 +120,17 @@ class UserCreateForm(forms.ModelForm):
         return user
 
 
+class AdminUserUpdateForm(UserCreateForm):
+    is_active = forms.BooleanField(
+        required=False, label='Usuário ativo',
+        help_text='Permite o acesso ao sistema. Ativar um cadastro pendente também aprova a solicitação.',
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+    )
+
+    class Meta(UserCreateForm.Meta):
+        fields = [*UserCreateForm.Meta.fields, 'is_active']
+
+
 class UsuarioForm(forms.ModelForm):
 
     class Meta:
